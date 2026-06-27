@@ -101,6 +101,69 @@ def settlement_line(src_tag: str, dst_tag: str, amount: str) -> str:
     return f"{src_tag}\nبه: {dst_tag}\nمبلغ: {amount} تومن"
 
 
+# --- Debtor tabs (persistent settlement) -------------------------------------
+
+def debtor_tab(src_tag: str, amount: str, dst_tag: str) -> str:
+    """The pay-message sent to (and tagging) a real-user debtor."""
+    return (
+        f"{src_tag} 👋\n\n"
+        f"سهم تو از دنگ: <b>{amount} تومن</b>\n"
+        f"باید بدی به: {dst_tag}\n\n"
+        "وقتی پرداخت کردی، دکمهٔ زیر رو بزن."
+    )
+
+
+def debtor_tab_line(amount: str, dst_tag: str) -> str:
+    return f"• {amount} تومن به {dst_tag}"
+
+
+def debtor_tab_multi(src_tag: str, lines: list[str]) -> str:
+    """Pay-message when one debtor owes more than one creditor (residual case)."""
+    body = "\n".join(lines)
+    return (
+        f"{src_tag} 👋\n\n"
+        f"سهم تو از دنگ:\n{body}\n\n"
+        "وقتی همه رو پرداخت کردی، دکمهٔ زیر رو بزن."
+    )
+
+
+# Appended to the same message after the first button press (anti-misclick).
+DOUBLE_CONFIRM_SUFFIX = "\n\n⚠️ برای اطمینان، یه بار دیگه تایید کن."
+
+
+def debtor_paid(src_tag: str, dst_tag: str, amount: str) -> str:
+    """Settled state shown on the debtor's message after final confirmation."""
+    return f"✅ {src_tag} مبلغ {amount} تومن رو به {dst_tag} پرداخت کرد. ممنون!"
+
+
+def debtor_paid_generic(src_tag: str) -> str:
+    """Settled state when the debtor had several lines."""
+    return f"✅ {src_tag} دنگش رو تسویه کرد. ممنون!"
+
+
+def manual_settle(owner_tag: str, lines: list[str]) -> str:
+    """Owner-facing message for manually-added debtors (can't be tagged)."""
+    body = "\n".join(lines)
+    return (
+        f"{owner_tag} این‌ها رو دستی اضافه کردی و هنوز بدهکارن 👇\n\n"
+        f"{body}\n\n"
+        "هر کدوم که پرداخت کرد رو انتخاب کن و بعد «✅ تایید» رو بزن."
+    )
+
+
+def manual_line(label: str, amount: str, dst_tag: str) -> str:
+    return f"• {label} باید {amount} تومن بده به {dst_tag}"
+
+
+def manual_settled_summary(lines: list[str]) -> str:
+    body = "\n".join(lines) if lines else "—"
+    return f"✅ این بدهی‌ها تسویه شد:\n{body}"
+
+
+TAB_ALL_SETTLED = "همهٔ دنگا تسویه شد! 🎉"
+NOT_YOUR_BUTTON = "این دکمه مال تو نیست 🙂"
+
+
 # --- Button labels -----------------------------------------------------------
 
 BTN_NONE_OF_ABOVE = "یکی دیگه"
@@ -111,3 +174,9 @@ BTN_DONE = "✅ تموم"
 BTN_CONFIRM_PARTICIPANTS = "✅ ادامه"
 SELECTED = "🟢"
 UNSELECTED = "🔘"
+
+# Debtor-tab buttons.
+BTN_PAID = "دنگمو دادم"
+BTN_PAID_CONFIRM = "تایید میکنم دنگمو دادم"
+BTN_MANUAL_CONFIRM = "✅ تایید"
+BTN_EXPIRED = "⏰ غیرفعال"

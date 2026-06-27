@@ -5,6 +5,8 @@ This role of this file is to describe common mistakes and confusion points that 
 
 - ALWAYS assume the default terminal is PowerShell 7. If you run terminal-specific commands, make sure you always use commands compatible with PowerShell 7.
 
+- There is a Python 3.12 virtual environment in the project directory in `.venv` though it is ignored in `.gitignore`. Make sure to always use this environment.
+
 - By default (even if not in `/plan` mode), plan for the changes requested by the developer. after the planning is done and it is ready to implement, create an ENUMERATED .md file for that plan and save it in `.\plans` directory that exists in the current working directory and then STOP. The developer will then review the plan and give you the go-ahead to implement it. Do not implement the plan until the developer gives you the go-ahead.
 
 ## Common Mistakes and Confusion Points

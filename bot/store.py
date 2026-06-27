@@ -3,8 +3,12 @@
 Requirement 0.1 (developer answer) overrides the original "no data" rule for
 *member data*: the bot may save the members it has seen per group so the list
 survives restarts, plus any manually-added names — each group keeps its own
-data. Transient conversation state (locks, wizard selections, timers) is NOT
-persisted; it lives only in :mod:`bot.state`.
+data. Transient *wizard* state (locks, draft selections, the inactivity timer)
+is NOT persisted; it lives only in :mod:`bot.state`.
+
+Outstanding **debtor tabs** ARE persisted, per chat, under each roster's ``tabs``
+key (see :mod:`bot.ledger`): who still owes whom, plus the bookkeeping needed to
+re-ping debtors every few hours and to survive a restart.
 
 The store is intentionally minimal: a single JSON file written atomically.
 Concurrency is not a concern because python-telegram-bot processes updates on a

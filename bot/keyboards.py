@@ -15,6 +15,13 @@ Callback-data scheme (kept short; Telegram caps callback_data at 64 bytes):
   done                  more-payers: finish -> settle
   mcancel               more-payers: cancel
 
+Debtor-tab buttons (post-settlement, see bot/ledger.py):
+  paid1|<member_key>    debtor: "I paid" (first press -> ask to re-confirm)
+  paid2|<member_key>    debtor: confirm payment (locked to that user)
+  mtog|<member_key>     manual settle: owner toggles a manual debtor as paid
+  mconf                 manual settle: owner confirms the selection
+  noop                  inert (disabled / expired button)
+
 Member buttons are laid out in 2 columns (req 0.5 answer).
 """
 
@@ -102,3 +109,47 @@ def more_payers_keyboard(members: list[Member]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(messages.BTN_CANCEL, callback_data="mcancel")]
     )
     return InlineKeyboardMarkup(rows)
+
+
+# --- debtor-tab keyboards ----------------------------------------------------
+
+def debtor_prompt_keyboard(src_key: str) -> InlineKeyboardMarkup:
+    """First state of a debtor's pay-message: a single 'I paid' button."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(messages.BTN_PAID, callback_data=f"paid1|{src_key}")]]
+    )
+
+
+def debtor_confirm_keyboard(src_key: str) -> InlineKeyboardMarkup:
+    """Second state (after first press): the anti-misclick confirm button."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(
+            messages.BTN_PAID_CONFIRM, callback_data=f"paid2|{src_key}"
+        )]]
+    )
+
+
+def manual_settle_keyboard(
+    srcs: list[tuple[str, str]], selected: set[str]
+) -> InlineKeyboardMarkup:
+    """Owner picks which manual debtors have paid.
+
+    ``srcs`` is a list of ``(src_key, label)`` pairs (one per manual debtor).
+    """
+    rows = []
+    for key, label in srcs:
+        mark = messages.SELECTED if key in selected else messages.UNSELECTED
+        rows.append(
+            [InlineKeyboardButton(f"{mark} {label}", callback_data=f"mtog|{key}")]
+        )
+    rows.append(
+        [InlineKeyboardButton(messages.BTN_MANUAL_CONFIRM, callback_data="mconf")]
+    )
+    return InlineKeyboardMarkup(rows)
+
+
+def disabled_keyboard() -> InlineKeyboardMarkup:
+    """A single inert button used to neutralise a superseded message."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(messages.BTN_EXPIRED, callback_data="noop")]]
+    )

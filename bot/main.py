@@ -25,7 +25,9 @@ from .handlers.dong import (
     on_payer_callback,
 )
 from .handlers.membership import on_my_chat_member
+from .handlers.reminders import reschedule_all
 from .handlers.start import start
+from .handlers.tabs import on_manual_settle_callback, on_paid_callback
 
 
 logging.basicConfig(
@@ -37,7 +39,13 @@ log = logging.getLogger("dong-bot")
 
 def _build_application() -> Application:
     config.validate()
-    app = Application.builder().token(config.BOT_TOKEN).proxy("http://127.0.0.1:10808").build()
+    app = (
+        Application.builder()
+        .token(config.BOT_TOKEN)
+        .proxy("http://127.0.0.1:10808")
+        .post_init(reschedule_all)
+        .build()
+    )
 
     # /start (private chat only; start.py ignores group calls).
     app.add_handler(CommandHandler("start", start))
@@ -115,6 +123,14 @@ async def _callback_dispatcher(
     # Step 12 (more payers?).
     if data.startswith("more|") or data in {"done", "mcancel", "moreno"}:
         await on_more_callback(update, context)
+        return
+    # Debtor tab: real-user payment confirmation (two-step).
+    if data.startswith("paid1|") or data.startswith("paid2|"):
+        await on_paid_callback(update, context)
+        return
+    # Debtor tab: owner settling manual debtors.
+    if data.startswith("mtog|") or data == "mconf":
+        await on_manual_settle_callback(update, context)
         return
 
     # Unknown / no-op buttons (e.g. the expired "⏰ منقضی شد").

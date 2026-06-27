@@ -18,7 +18,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
-from .. import access, config, messages, roster as roster_mod, state
+from .. import access, config, ledger, messages, roster as roster_mod, state
 from ..keyboards import (
     amount_keyboard,
     more_payers_keyboard,
@@ -26,7 +26,8 @@ from ..keyboards import (
     payer_keyboard,
 )
 from ..roster import find, members, mention_user
-from ..settle import Payment as SettlePayment, settle
+from ..settle import Payment as SettlePayment
+from . import tabs
 
 
 log = logging.getLogger(__name__)
@@ -101,25 +102,6 @@ async def _on_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         pass
     _end_session(chat_id, owner_id=None)
-
-
-def _format_amount(amount: Decimal) -> str:
-    q = amount.quantize(Decimal("0.01"))
-    s = format(q, "f")
-    if "." in s:
-        int_part, dec_part = s.split(".")
-        dec_part = dec_part.rstrip("0").rstrip(".") or "00"
-        s = f"{int_part}.{dec_part}"
-    return s
-
-
-def _tag_member(chat_id: int, label: str) -> str:
-    for m in members(chat_id):
-        if m.label == label:
-            if m.user_id is not None:
-                return roster_mod.mention_user(m.user_id, m.username, m.first_name)
-            return m.label
-    return label
 
 
 # ---------- universal owner guard (callback + message) ----------------------
@@ -621,26 +603,29 @@ async def on_more_callback(
 
 # ---------- settlement ------------------------------------------------------
 
-async def _settle(context, session) -> None:
-    chat_id = session.chat_id
-    if not session.payments:
-        try:
-            await context.bot.send_message(chat_id, messages.NOTHING_TO_SETTLE)
-        except Exception:
-            pass
-        _end_session(chat_id, session.owner_id)
-        return
+def _build_label_map(chat_id: int) -> dict[str, str]:
+    """key -> display label, from the current roster plus carried tab labels."""
+    label_map = {m.key: m.label for m in members(chat_id)}
+    for o in ledger.load_obligations(chat_id):
+        label_map.setdefault(o.src, o.src_label)
+        label_map.setdefault(o.dst, o.dst_label)
+    return label_map
 
+
+async def _settle(context, session) -> None:
+    """Finish the wizard: fold this invoice into the persistent tab and message
+    each debtor (replacing the old one-shot summary)."""
+    chat_id = session.chat_id
     settle_payments = [
         SettlePayment(
-            payer=p.payer_label,
+            payer=p.payer_key,
             amount=p.amount,
-            participants=tuple(p.participant_labels),
+            participants=tuple(p.participant_keys),
         )
         for p in session.payments
+        if p.participant_keys
     ]
-    txns = settle(settle_payments)
-    if not txns:
+    if not settle_payments:
         try:
             await context.bot.send_message(chat_id, messages.NOTHING_TO_SETTLE)
         except Exception:
@@ -648,24 +633,31 @@ async def _settle(context, session) -> None:
         _end_session(chat_id, session.owner_id)
         return
 
-    lines = [messages.SETTLEMENT_HEADER]
-    for t in txns:
-        lines.append(
-            messages.settlement_line(
-                _tag_member(chat_id, t.src),
-                _tag_member(chat_id, t.dst),
-                _format_amount(t.amount),
-            )
-        )
-    summary = "\n\n".join(lines) + "\n"
+    # Neutralise any previous tab messages/reminders before replacing the tab.
+    await tabs.deactivate_all(context, chat_id)
+
+    label_map = _build_label_map(chat_id)
+    obligations = ledger.merge_invoice(chat_id, settle_payments, label_map)
     log.info(
-        "chat %s: settled %d payment(s) into %d transaction(s)",
-        chat_id, len(session.payments), len(txns),
+        "chat %s: merged %d payment(s) -> %d outstanding obligation(s)",
+        chat_id, len(settle_payments), len(obligations),
+    )
+
+    if not obligations:
+        try:
+            await context.bot.send_message(chat_id, messages.TAB_ALL_SETTLED)
+        except Exception:
+            pass
+        _end_session(chat_id, session.owner_id)
+        return
+
+    owner_mention = roster_mod.mention_html_user(
+        session.owner_id, session.owner_username, session.owner_first_name
     )
     try:
-        await context.bot.send_message(chat_id, summary)
+        await tabs.dispatch(context, chat_id, session.owner_id, owner_mention)
     except Exception:
-        log.exception("chat %s: failed to post settlement summary", chat_id)
+        log.exception("chat %s: failed to dispatch debtor tabs", chat_id)
     _end_session(chat_id, session.owner_id)
 
 

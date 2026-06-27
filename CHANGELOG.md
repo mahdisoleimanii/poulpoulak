@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased] — persistent debtor tabs
+
+Replaced the one-shot "who owes whom" settlement summary with a persistent,
+per-debtor **tab** system (see `plans/03-persistent-debtor-tabs.md`).
+
+- **Per-debtor messages instead of a summary**: when the owner finishes, the bot
+  messages every person who must pay. Real users are tagged with a two-step
+  confirm button (`دنگمو دادم` → `تایید میکنم دنگمو دادم`, anti-misclick) that is
+  **locked to that user**.
+- **6-hourly reminders**: an unpaid debtor is re-pinged every
+  `REMINDER_INTERVAL_SECONDS` (default 6h); each reminder disables the previous
+  message's button so only the latest is actionable. Reminders survive restarts
+  via an Application `post_init` rescheduler.
+- **Tabs accumulate across invoices**: a new "دنگ" run folds into the outstanding
+  balance and re-runs the minimal split, so every debtor still pays exactly once
+  even with unpaid prior debt. Superseded messages are disabled and fresh ones
+  sent with the new totals.
+- **Manual debtors** (no Telegram id) are grouped into one message tagging the
+  session owner, who toggles who has paid and confirms; any still-unpaid manual
+  debtors get a fresh message. Manual names remain **persisted** so a debtor's
+  identity is stable across invoices.
+- **New code**: `bot/ledger.py` (durable tab bookkeeping, Telegram-free + unit
+  tested) and `bot/handlers/{tabs,reminders}.py`. Tab messages are sent as HTML
+  for robust tagging. Added `tests/test_ledger.py`.
+
 ## [Unreleased] — fixes
 
 - **Stop responding to every message**: while a wizard session is active, the bot now reacts only to the owner's *reply to its current prompt*. All other group chatter (and non-owner replies) is ignored silently instead of being answered with "only the owner can use me" / "please reply". Removed the `REPLY_REQUIRED`/`ONLY_OWNER` nags from the text path; button clicks still get an owner-only toast.

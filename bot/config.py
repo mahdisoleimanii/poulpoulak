@@ -9,6 +9,8 @@ Optional:
   REPO_URL      -- public repository URL shown in info messages.
   SESSION_TIMEOUT_SECONDS -- inactivity timeout for a session (default: 300).
   MAX_MEMBER_BUTTONS -- cap on roster buttons shown (default: 20).
+  REMINDER_INTERVAL_SECONDS -- how often to re-ping unpaid debtors
+                               (default: 21600 = 6 hours).
 
 A local `.env` file is loaded for development convenience if python-dotenv
 is available; real deployments should pass env vars directly.
@@ -63,6 +65,12 @@ SESSION_TIMEOUT_SECONDS: int = int(
 # Requirement: the bot only supports groups with fewer than 20 members for
 # the button list. Buttons are laid out in 2 columns (see keyboards.py).
 MAX_MEMBER_BUTTONS: int = int(os.environ.get("MAX_MEMBER_BUTTONS", "20"))
+
+# How often to re-ping a debtor who hasn't confirmed payment yet (req: remind
+# every 6 hours). Configurable mainly so tests / demos can shorten it.
+REMINDER_INTERVAL_SECONDS: int = int(
+    os.environ.get("REMINDER_INTERVAL_SECONDS", str(6 * 60 * 60))
+)
 
 
 def is_super_admin(user_id: int | None) -> bool:

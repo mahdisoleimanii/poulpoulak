@@ -12,6 +12,7 @@ Both are stored per chat and survive restarts. Bots are never added.
 
 from __future__ import annotations
 
+import html
 from dataclasses import dataclass
 
 from . import store
@@ -168,3 +169,26 @@ def _escape_md(text: str) -> str:
     for ch in ("[", "]", "(", ")"):
         text = text.replace(ch, "")
     return text
+
+
+# --- HTML tagging (used by the persistent debtor-tab messages) ---------------
+#
+# The tab messages are sent with parse_mode=HTML because it is far more robust
+# than legacy Markdown (only < > & need escaping), and a no-username user can
+# still be reliably tagged/notified via a tg://user link.
+
+def mention_html_user(
+    user_id: int, username: str | None, first_name: str | None
+) -> str:
+    """HTML mention for a real user that reliably notifies them."""
+    if username:
+        return f"@{username}"
+    name = html.escape(first_name or f"کاربر {user_id}")
+    return f'<a href="tg://user?id={user_id}">{name}</a>'
+
+
+def mention_html(member: Member) -> str:
+    """HTML mention for a roster member (real -> tag, manual -> escaped name)."""
+    if member.user_id is not None:
+        return mention_html_user(member.user_id, member.username, member.first_name)
+    return html.escape(member.label)
