@@ -1,10 +1,20 @@
 # Changelog
 
+## [1.0.2] — 2026-06-27
+
+### Fixes
+
+- Fixed the problem where the directory didn't exist on the server
+
+---
+
 ## [1.0.1] — 2026-06-27
 
 ### Fixes
 
 - Fixed a bug in deployment process
+
+---
 
 ## [1.0.0] — 2026-06-27
 

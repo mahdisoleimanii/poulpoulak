@@ -45,6 +45,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # 1. First, make sure the directory exists on the VPS
+      - name: Prepare VPS Directory
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: mkdir -p "$HOME/poulpoulak"
+
+      # 2. Copy your docker-compose.yml from the GitHub Runner to the VPS
+      - name: Copy docker-compose.yml to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "poulpoulak/"
+
+      # 3. Proceed with the deployment
       - name: Deploy to VPS over SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -54,13 +74,15 @@ jobs:
           script: |
             set -euo pipefail
             cd "$HOME/poulpoulak"
-            # Write runtime env vars from GitHub Secrets (no .env file needed).
+            
+            # Write runtime env vars from GitHub Secrets (no .env file needed in repo).
             cat > .env <<-ENVEOF
             BOT_TOKEN=${{ secrets.BOT_TOKEN }}
             SUPER_ADMINS=${{ secrets.SUPER_ADMINS }}
             PROXY_URL=${{ secrets.PROXY_URL }}
             DATA_DIR=/data
             ENVEOF
+            
             # Pull the freshly built image.
             GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }} \
               docker compose pull api || true
