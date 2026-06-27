@@ -5,6 +5,8 @@ settle-up transactions using the rule **every debtor makes exactly one payment**
 
 > پول‌پولک: سهم‌های کوچک پول تو خرج‌های گروهی رو برات حساب می‌کنه.
 
+NOTE: This bot was written solely by AI agents.
+
 ## Features
 
 - **Group-only**: works inside Telegram groups; `/start` in private chats shows
@@ -163,4 +165,8 @@ bot/
 
 ## License
 
-MIT — see `LICENSE` (add one before publishing).
+MIT — see `LICENSE`.
+
+## Attribution
+
+Telegram Bot Profile Picture: <a href="https://www.flaticon.com/free-icons/coin" title="coin icons">Coin icons created by Shuvo.Das - Flaticon</a>
