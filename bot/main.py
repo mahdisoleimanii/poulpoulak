@@ -42,7 +42,6 @@ def _build_application() -> Application:
     app = (
         Application.builder()
         .token(config.BOT_TOKEN)
-        .proxy("http://127.0.0.1:10808")
         .post_init(reschedule_all)
         .build()
     )

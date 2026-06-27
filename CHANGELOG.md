@@ -1,5 +1,14 @@
 # Changelog
 
+
+## [1.0.3] — 2026-06-27
+
+### Fixes 
+
+- Removed leftover proxy from local run
+
+---
+
 ## [1.0.2] — 2026-06-27
 
 ### Fixes
