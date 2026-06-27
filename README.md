@@ -166,3 +166,7 @@ bot/
 ## License
 
 MIT — see `LICENSE`.
+
+## Attribution
+
+Telegram Bot Profile Picture: <a href="https://www.flaticon.com/free-icons/coin" title="coin icons">Coin icons created by Shuvo.Das - Flaticon</a>
