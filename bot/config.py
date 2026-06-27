@@ -22,7 +22,10 @@ from pathlib import Path
 try:  # optional dev convenience only
     from dotenv import load_dotenv
 
-    load_dotenv()
+    # override=True so edits to .env always win over a stale value left in the
+    # shell/OS environment from an earlier run (otherwise added SUPER_ADMINS
+    # silently don't take effect).
+    load_dotenv(override=True)
 except Exception:  # pragma: no cover - dotenv is optional
     pass
 

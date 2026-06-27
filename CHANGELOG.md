@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] — fixes
+
+- **Stop responding to every message**: while a wizard session is active, the bot now reacts only to the owner's *reply to its current prompt*. All other group chatter (and non-owner replies) is ignored silently instead of being answered with "only the owner can use me" / "please reply". Removed the `REPLY_REQUIRED`/`ONLY_OWNER` nags from the text path; button clicks still get an owner-only toast.
+- **`.env` now authoritative**: `load_dotenv(override=True)` so added `SUPER_ADMINS` (or any var) take effect even if a stale value lingers in the shell/OS environment from an earlier run.
+- **Roster bug**: normal messages were recorded with `is_bot=True` and silently dropped, so the roster never grew from chat. Fixed; `remember_user` also skips the disk write when the entry is unchanged (called per message now).
+- **Logging**: per-module loggers in `dong`/`membership`/`start`, a global `add_error_handler` that logs any uncaught handler exception with traceback, and INFO logs at session start, payment recorded, settlement, cancel, timeout, busy, and authorize/reject.
+- **Bug fix**: `my_chat_member` was registered via a non-existent message filter; switched to `ChatMemberHandler`.
+
 ## [Unreleased] — initial implementation
 
 Added the bot skeleton end-to-end:

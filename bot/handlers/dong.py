@@ -10,6 +10,7 @@ owner-only enforcement are simpler to express with explicit dispatch.
 
 from __future__ import annotations
 
+import logging
 import re
 from decimal import Decimal, InvalidOperation
 
@@ -27,6 +28,8 @@ from ..keyboards import (
 from ..roster import find, members, mention_user
 from ..settle import Payment as SettlePayment, settle
 
+
+log = logging.getLogger(__name__)
 
 KEYWORD = "دنگ"
 DECIMAL_RE = re.compile(r"^\s*-?\d+(?:[.,]\d+)?\s*$")
@@ -81,6 +84,7 @@ async def _on_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
     session = state.get_session(chat_id)
     if session is None:
         return
+    log.info("chat %s: session timed out after inactivity", chat_id)
     if session.menu_message_id is not None:
         try:
             await context.bot.edit_message_reply_markup(
@@ -155,11 +159,8 @@ async def _guard_message(
     session = state.get_session(chat.id)
     if session is None:
         return None
+    # Non-owners are filtered (silently) by the router; no nagging here.
     if not _owner_only(session, message.from_user.id if message.from_user else None):
-        try:
-            await message.reply_text(messages.ONLY_OWNER)
-        except Exception:
-            pass
         return None
     return session
 
@@ -169,28 +170,44 @@ async def _guard_message(
 async def on_group_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Handle any group message that is NOT the bare keyword, while the wizard
-    is active. Dispatches by what the session is currently expecting."""
+    """Handle a non-keyword group message.
+
+    The bot stays silent on ordinary chatter. It only acts when the message is
+    a *reply to its current prompt*, sent by the session owner (req 14). Every
+    other message is ignored — we just quietly learn the sender into the roster.
+    """
     message = update.effective_message
     chat = update.effective_chat
     if message is None or chat is None or not _is_group(update):
         return
 
-    session = state.get_session(chat.id)
-    if session is None:
-        return  # nothing to do
-
-    expected = session.awaiting_reply
-    if expected is None:
-        return  # only callback buttons are valid right now
-
-    # Record the speaker so the roster grows even outside the keyword.
+    # Learn anyone who speaks, with or without an active session (0.1).
     user = message.from_user
     if user is not None and not user.is_bot:
         roster_mod.remember_user(
-            chat.id, user.id, user.username, user.first_name, True
+            chat.id, user.id, user.username, user.first_name, bool(user.is_bot)
         )
 
+    session = state.get_session(chat.id)
+    if session is None:
+        return
+
+    expected = session.awaiting_reply
+    if expected is None:
+        return  # waiting on a button press, not text
+
+    # Only a reply to our prompt counts — ignore all other messages silently.
+    if (
+        message.reply_to_message is None
+        or session.prompt_message_id is None
+        or message.reply_to_message.message_id != session.prompt_message_id
+    ):
+        return
+    # Only the owner drives the wizard; ignore everyone else silently.
+    if not _owner_only(session, user.id if user else None):
+        return
+
+    log.info("chat %s: owner reply for step '%s'", chat.id, expected)
     if expected == "manual_payer":
         await on_manual_payer_message(update, context)
     elif expected == "amount":
@@ -215,6 +232,7 @@ async def on_dong_keyword(
         return
 
     if not access.is_authorized_chat(chat.id):
+        log.info("keyword in unauthorized chat %s — ignored", chat.id)
         return
 
     roster_mod.remember_user(
@@ -222,6 +240,7 @@ async def on_dong_keyword(
     )
 
     if state.is_locked(chat.id):
+        log.info("chat %s busy; keyword from %s ignored", chat.id, user.id)
         try:
             await message.reply_text(messages.BUSY)
         except Exception:
@@ -234,6 +253,7 @@ async def on_dong_keyword(
         owner_username=user.username,
         owner_first_name=user.first_name,
     )
+    log.info("chat %s: session started by owner %s", chat.id, user.id)
     _schedule_timeout(context, session)
     await _show_payer_prompt(context, session)
 
@@ -304,15 +324,6 @@ async def on_manual_payer_message(
     if session is None or message is None:
         return
     if session.awaiting_reply != "manual_payer":
-        return
-    if (
-        not message.reply_to_message
-        or message.reply_to_message.message_id != session.prompt_message_id
-    ):
-        try:
-            await message.reply_text(messages.REPLY_REQUIRED)
-        except Exception:
-            pass
         return
     name = (message.text or "").strip()
     if not name:
@@ -387,15 +398,6 @@ async def on_amount_message(
     if session is None or message is None:
         return
     if session.awaiting_reply != "amount":
-        return
-    if (
-        not message.reply_to_message
-        or message.reply_to_message.message_id != session.prompt_message_id
-    ):
-        try:
-            await message.reply_text(messages.REPLY_REQUIRED)
-        except Exception:
-            pass
         return
 
     raw = (message.text or "").strip().replace(",", ".")
@@ -512,15 +514,6 @@ async def on_manual_participants_message(
         return
     if session.awaiting_reply != "manual_participants":
         return
-    if (
-        not message.reply_to_message
-        or message.reply_to_message.message_id != session.prompt_message_id
-    ):
-        try:
-            await message.reply_text(messages.REPLY_REQUIRED)
-        except Exception:
-            pass
-        return
     names = [n.strip() for n in re.split(r"[،,\n]", message.text or "") if n.strip()]
     if not names:
         try:
@@ -564,6 +557,11 @@ async def _commit_and_ask_more(query, context, session) -> None:
             participant_keys=list(session.draft_participants),
             participant_labels=participants,
         )
+    )
+    log.info(
+        "chat %s: recorded payment %s paid %s for %d people (total %d so far)",
+        session.chat_id, payer_label, session.draft_amount,
+        len(participants), len(session.payments),
     )
     session.draft_payer_key = None
     session.draft_payer_label = None
@@ -660,14 +658,19 @@ async def _settle(context, session) -> None:
             )
         )
     summary = "\n\n".join(lines) + "\n"
+    log.info(
+        "chat %s: settled %d payment(s) into %d transaction(s)",
+        chat_id, len(session.payments), len(txns),
+    )
     try:
         await context.bot.send_message(chat_id, summary)
     except Exception:
-        pass
+        log.exception("chat %s: failed to post settlement summary", chat_id)
     _end_session(chat_id, session.owner_id)
 
 
 async def _cancel(context, session) -> None:
+    log.info("chat %s: cancelled by owner %s", session.chat_id, session.owner_id)
     try:
         await context.bot.send_message(session.chat_id, messages.CANCELLED)
     except Exception:

@@ -37,7 +37,7 @@ log = logging.getLogger("dong-bot")
 
 def _build_application() -> Application:
     config.validate()
-    app = Application.builder().token(config.BOT_TOKEN).build()
+    app = Application.builder().token(config.BOT_TOKEN).proxy("http://127.0.0.1:10808").build()
 
     # /start (private chat only; start.py ignores group calls).
     app.add_handler(CommandHandler("start", start))
@@ -61,7 +61,15 @@ def _build_application() -> Application:
         )
     )
 
+    # Catch-all: log any exception raised inside a handler (req: logging).
+    app.add_error_handler(_on_error)
+
     return app
+
+
+async def _on_error(update, context) -> None:
+    """Log uncaught handler exceptions with a full traceback."""
+    log.exception("unhandled error while processing update", exc_info=context.error)
 
 
 async def _callback_dispatcher(
@@ -133,7 +141,7 @@ async def on_group_message_or_keyword(
 def main() -> None:  # pragma: no cover - thin entrypoint
     app = _build_application()
     log.info("Dong Bot starting (long-polling)...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":  # pragma: no cover

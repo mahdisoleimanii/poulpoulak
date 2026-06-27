@@ -65,15 +65,18 @@ def remember_user(
     first_name: str | None,
     is_bot: bool,
 ) -> None:
-    """Record a seen user for this chat. Bots are ignored. Persists to disk."""
+    """Record a seen user for this chat. Bots are ignored. Persists to disk.
+
+    Called on every group message, so skip the disk write when nothing changed.
+    """
     if is_bot:
         return
     data = store.load()
     blob = _chat_blob(data, chat_id)
-    blob["users"][str(user_id)] = {
-        "username": username,
-        "first_name": first_name,
-    }
+    entry = {"username": username, "first_name": first_name}
+    if blob["users"].get(str(user_id)) == entry:
+        return  # already known and unchanged — no write needed
+    blob["users"][str(user_id)] = entry
     store.save(data)
 
 

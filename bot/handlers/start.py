@@ -1,12 +1,14 @@
 """/start handler (req 3, 4): private-chat info for users, instructions for admins."""
 
-from __future__ import annotations
+import logging
 
 from telegram import Update
 from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
 from .. import access, config, messages
+
+log = logging.getLogger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -20,7 +22,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if chat.type != ChatType.PRIVATE:
         return
 
-    if access.is_super_admin(user.id):
+    is_admin = access.is_super_admin(user.id)
+    log.info("/start from %s (super_admin=%s)", user.id, is_admin)
+    if is_admin:
         await message.reply_text(messages.start_admin(config.REPO_URL))
     else:
         await message.reply_text(messages.start_non_admin(config.REPO_URL))
