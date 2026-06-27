@@ -34,7 +34,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     level=logging.INFO,
 )
-log = logging.getLogger("dong-bot")
+log = logging.getLogger("poulpoulak")
 
 
 def _build_application() -> Application:
@@ -156,7 +156,7 @@ async def on_group_message_or_keyword(
 
 def main() -> None:  # pragma: no cover - thin entrypoint
     app = _build_application()
-    log.info("Dong Bot starting (long-polling)...")
+    log.info("Poulpoulak (پول‌پولک) starting (long-polling)...")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 

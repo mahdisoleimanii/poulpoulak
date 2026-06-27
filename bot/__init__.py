@@ -1,3 +1,3 @@
-"""Dong Bot — a Telegram bot to simplify group expense splitting."""
+"""Poulpoulak (پول‌پولک) — a Telegram bot to simplify group expense splitting."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

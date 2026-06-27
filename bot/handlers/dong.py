@@ -332,10 +332,15 @@ async def on_manual_payer_message(
 # ---------- step: amount ----------------------------------------------------
 
 async def _show_amount_prompt(context, session, query=None) -> None:
-    mention = mention_user(
-        session.owner_id, session.owner_username, session.owner_first_name
-    )
-    text = messages.ask_amount(mention)
+    # Show the payer's name, not the session owner — so it is clear who paid.
+    payer_tag = session.draft_payer_label or "?"
+    if session.draft_payer_key and session.draft_payer_key.startswith("u"):
+        member = find(session.chat_id, session.draft_payer_key)
+        if member is not None and member.user_id is not None:
+            payer_tag = mention_user(
+                member.user_id, member.username, member.first_name
+            )
+    text = messages.ask_amount(payer_tag)
     sent = None
     if query is not None and query.message is not None:
         try:

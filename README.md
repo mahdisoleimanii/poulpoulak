@@ -1,4 +1,4 @@
-# Dong Bot (دنگ)
+# Poulpoulak (پول‌پولک)
 
 A small Persian Telegram bot that splits group expenses and reduces the number
 of settle-up transactions using the rule **every debtor makes exactly one
@@ -87,20 +87,26 @@ payment**.
 
 ## Deployment to a VPS
 
-The `.github/workflows/deploy.yml` workflow builds the Docker image, pushes it
-to GHCR, and then SSHes into your VPS to pull and restart it via Docker
-Compose. Required GitHub repository secrets:
+The `.github/workflows/deploy.yml` workflow:
 
-| Secret         | Purpose                                  |
-|----------------|------------------------------------------|
-| `VPS_HOST`     | hostname or IP of the VPS                |
-| `VPS_USER`     | SSH username                             |
-| `VPS_SSH_KEY`  | private SSH key for that user            |
-| `BOT_TOKEN`    | passed in by the runtime via `.env` only |
-| `SUPER_ADMINS` | passed in by the runtime via `.env` only |
+1. Triggers on **git tags** (`v*`) — push a tag like `v1.0.0` to deploy.
+2. Builds the Docker image and pushes it to GHCR (tagged both `:latest` and `:vX.Y.Z`).
+3. SSHes into the VPS, creates runtime `.env` from **GitHub Secrets**, pulls the
+   fresh image, and restarts via Docker Compose.
 
-Copy the project to the VPS, create a `.env` with `BOT_TOKEN` and
-`SUPER_ADMINS`, and push to `main`.
+Required GitHub repository secrets:
+
+| Secret          | Purpose                           |
+|-----------------|-----------------------------------|
+| `VPS_HOST`      | hostname or IP of the VPS         |
+| `VPS_USER`      | SSH username                      |
+| `VPS_SSH_KEY`   | private SSH key for that user     |
+| `BOT_TOKEN`     | Telegram bot token (required)     |
+| `SUPER_ADMINS`  | comma/space separated Telegram IDs|
+| `PROXY_URL`     | optional HTTP proxy for the bot   |
+
+No `.env` file is needed on the VPS; the workflow writes one from secrets on
+every deploy. For local development, copy `.env.example` to `.env` and fill it in.
 
 ## Tests
 
