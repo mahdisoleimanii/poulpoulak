@@ -1,0 +1,16 @@
+.venv
+.git
+.continue
+.github
+.gitignore
+plans
+tests
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+data
+*.md
+!README.md
+!CHANGELOG.md

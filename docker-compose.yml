@@ -1,0 +1,12 @@
+services:
+  api:
+    image: ghcr.io/your-username/dong-bot:latest
+    container_name: dong-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - dong-data:/data
+    # PTB uses long-polling by default; no ports to publish.
+
+volumes:
+  dong-data:
