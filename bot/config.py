@@ -53,7 +53,7 @@ BOT_TOKEN: str = os.environ.get("BOT_TOKEN", "").strip()
 SUPER_ADMINS: frozenset[int] = _parse_super_admins(os.environ.get("SUPER_ADMINS"))
 
 REPO_URL: str = os.environ.get(
-    "REPO_URL", "https://github.com/your-username/poulpoulak"
+    "REPO_URL", "https://github.com/mahdisoleimani/poulpoulak"
 ).strip()
 
 DATA_DIR: Path = Path(os.environ.get("DATA_DIR", "data")).expanduser()
