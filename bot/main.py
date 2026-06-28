@@ -7,6 +7,7 @@ import logging
 from telegram import Update
 from telegram.constants import ChatType
 from telegram.ext import (
+    AIORateLimiter,
     Application,
     CallbackQueryHandler,
     ChatMemberHandler,
@@ -18,6 +19,7 @@ from telegram.ext import (
 from . import config
 from .handlers.dong import (
     on_amount_callback,
+    on_cancel_command,
     on_dong_keyword,
     on_group_message,
     on_more_callback,
@@ -43,12 +45,16 @@ def _build_application() -> Application:
     app = (
         Application.builder()
         .token(config.BOT_TOKEN)
+        .rate_limiter(AIORateLimiter())
         .post_init(reschedule_all)
         .build()
     )
 
     # /start (private chat only; start.py ignores group calls).
     app.add_handler(CommandHandler("start", start))
+
+    # /cancel — escape hatch to end a stuck/unwanted session (group chats).
+    app.add_handler(CommandHandler("cancel", on_cancel_command))
 
     # Bot added/removed from a group (auth gate).
     app.add_handler(ChatMemberHandler(on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))

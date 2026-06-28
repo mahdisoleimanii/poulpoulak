@@ -7,6 +7,7 @@ roster/member data is persisted (see roster.py / store.py).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Optional
@@ -65,6 +66,19 @@ class Session:
 
     # Handle to the JobQueue inactivity job, so we can reschedule/cancel it.
     timeout_job: Any = None
+
+    # Wall-clock time of the last wizard activity. Used as a JobQueue-independent
+    # safety net: a session idle past the timeout is treated as stale and the
+    # per-chat lock is released on the next keyword (see dong.on_dong_keyword).
+    last_activity: float = field(default_factory=time.time)
+
+    def touch(self) -> None:
+        """Mark the session as active right now."""
+        self.last_activity = time.time()
+
+    def is_stale(self, timeout_seconds: float) -> bool:
+        """True if the session has been idle longer than ``timeout_seconds``."""
+        return (time.time() - self.last_activity) >= timeout_seconds
 
 
 # Per-chat active session. Presence of a key == the chat is "locked" (req 8/18).

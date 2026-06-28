@@ -98,6 +98,9 @@ def _summary_blocks(session: state.Session) -> list[tuple[str, str, str]]:
 def _schedule_timeout(
     context: ContextTypes.DEFAULT_TYPE, session: state.Session
 ) -> None:
+    # Mark activity for the JobQueue-independent stale-lock safety net. This runs
+    # at every wizard step, so an active session always stays fresh.
+    session.touch()
     if context.job_queue is None:
         return
     if session.timeout_job is not None:
@@ -271,13 +274,22 @@ async def on_dong_keyword(
         chat.id, user.id, user.username, user.first_name, bool(user.is_bot)
     )
 
-    if state.is_locked(chat.id):
-        log.info("chat %s busy; keyword from %s ignored", chat.id, user.id)
-        try:
-            await message.reply_text(messages.BUSY)
-        except Exception:
-            pass
-        return
+    existing = state.get_session(chat.id)
+    if existing is not None:
+        # Safety net (works even without JobQueue): if the active session has
+        # been idle past the timeout, it is stale — release the lock and start
+        # fresh instead of refusing forever. This recovers a chat that got stuck
+        # because a step failed mid-flow (e.g. a flood-control error).
+        if existing.is_stale(config.SESSION_TIMEOUT_SECONDS):
+            log.info("chat %s: releasing stale session (idle past timeout)", chat.id)
+            _end_session(chat.id, owner_id=None)
+        else:
+            log.info("chat %s busy; keyword from %s ignored", chat.id, user.id)
+            try:
+                await message.reply_text(messages.BUSY)
+            except Exception:
+                pass
+            return
 
     session = state.start_session(
         chat_id=chat.id,
@@ -288,6 +300,43 @@ async def on_dong_keyword(
     log.info("chat %s: session started by owner %s", chat.id, user.id)
     _schedule_timeout(context, session)
     await _show_payer_prompt(context, session)
+
+
+async def on_cancel_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """`/cancel` — an always-available escape hatch to kill a stuck session.
+
+    Allowed for the session owner or any super-admin, so a chat can be unstuck
+    immediately without waiting for the inactivity timeout.
+    """
+    message = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+    if message is None or user is None or chat is None or not _is_group(update):
+        return
+
+    session = state.get_session(chat.id)
+    if session is None:
+        try:
+            await message.reply_text(messages.NO_ACTIVE_SESSION)
+        except Exception:
+            pass
+        return
+
+    if not (_owner_only(session, user.id) or config.is_super_admin(user.id)):
+        try:
+            await message.reply_text(messages.ONLY_OWNER)
+        except Exception:
+            pass
+        return
+
+    log.info("chat %s: session cancelled via /cancel by %s", chat.id, user.id)
+    _end_session(chat.id, owner_id=None)
+    try:
+        await message.reply_text(messages.CANCELLED)
+    except Exception:
+        pass
 
 
 # ---------- step: pick payer ------------------------------------------------

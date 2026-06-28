@@ -1,2 +1,2 @@
-python-telegram-bot==21.9
+python-telegram-bot[job-queue,rate-limiter]==21.9
 python-dotenv==1.0.1
