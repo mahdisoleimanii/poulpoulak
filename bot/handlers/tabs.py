@@ -232,6 +232,24 @@ async def on_paid_callback(
             pass
         return
 
+    # Reject presses from a superseded message. Only the latest tracked message
+    # per debtor is actionable; an older one (whose disabling edit never landed —
+    # e.g. Telegram's 48h edit limit) must not confirm the *current* tab.
+    entry = ledger.get_real_msg(chat_id, src)
+    current_mid = entry.get("message_id") if entry else None
+    if current_mid != query.message.message_id:
+        try:
+            await query.answer(messages.TAB_MESSAGE_OUTDATED, show_alert=True)
+        except Exception:
+            pass
+        try:
+            await query.edit_message_reply_markup(
+                reply_markup=keyboards.disabled_keyboard()
+            )
+        except Exception:
+            pass
+        return
+
     src_obls = [o for o in ledger.load_obligations(chat_id) if o.src == src]
     if not src_obls:
         # Already settled / superseded.
@@ -312,6 +330,21 @@ async def on_manual_settle_callback(
     if query.from_user.id != manual_msg.get("owner_id"):
         try:
             await query.answer(messages.NOT_YOUR_BUTTON, show_alert=True)
+        except Exception:
+            pass
+        return
+
+    # Reject presses from a superseded manual-settle message (same guard as the
+    # real-user tabs above): only the latest tracked one is actionable.
+    if manual_msg.get("message_id") != query.message.message_id:
+        try:
+            await query.answer(messages.TAB_MESSAGE_OUTDATED, show_alert=True)
+        except Exception:
+            pass
+        try:
+            await query.edit_message_reply_markup(
+                reply_markup=keyboards.disabled_keyboard()
+            )
         except Exception:
             pass
         return

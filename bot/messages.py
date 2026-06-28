@@ -217,6 +217,9 @@ def manual_settled_summary(lines: list[str]) -> str:
 
 TAB_ALL_SETTLED = "همهٔ دنگا تسویه شد! 🎉"
 NOT_YOUR_BUTTON = "این دکمه مال تو نیست 🙂"
+TAB_MESSAGE_OUTDATED = (
+    "این پیام قدیمیه و دیگه معتبر نیست. از جدیدترین پیام ربات استفاده کن."
+)
 
 
 # --- Button labels -----------------------------------------------------------
