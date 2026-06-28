@@ -1,6 +1,44 @@
 # Changelog
 
 
+## [1.1.0] — 2026-06-28
+
+### Wizard conversation hygiene
+
+The bot no longer edits a prompt's text to repurpose it, and no longer deletes
+the owner's replies. Each step now **disables the previous message's buttons and
+sends a new message**, so the whole bot↔owner exchange stays visible to the
+group (`plans/04-wizard-ux-and-uneven-split.md`).
+
+- Payer→amount and amount→participants send fresh messages; the participants
+  question is sent as a reply to the owner's amount message.
+- Dropped every `message.delete()` in the wizard.
+
+### Running summary
+
+- After each recorded payment the bot posts a `خلاصه تا الان 📝` block (payer,
+  amount, people) combined with the "another payer?" menu, and re-posts the
+  final summary when the session finishes.
+- Summary names omit the leading `@` so the summary never pings anyone.
+
+### Uneven (custom) splitting
+
+- New split-choice step after participants: **مساوی** (equal) or **نامساوی**
+  (manual). Uneven mode lists each participant numbered; the owner replies with
+  one share per line, validated to sum exactly to the paid amount.
+- `settle.Payment` gained an optional, hashable `shares` field; `compute_balances`
+  charges explicit shares when present and falls back to the equal split
+  otherwise — fully backward compatible. Shares flow through to the persistent
+  tab ledger unchanged.
+
+### Tests
+
+- Added uneven-share unit tests for `settle` and `ledger`, plus an offline
+  wizard-flow harness (even/uneven end-to-end, share validation, and assertions
+  that no message text is edited or deleted). Suite is now **24 tests**.
+
+---
+
 ## [1.0.4] — 2026-06-27
 
 ### Fixes

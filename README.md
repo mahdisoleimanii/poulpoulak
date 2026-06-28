@@ -17,6 +17,18 @@ NOTE: This bot was written solely by AI agents.
   are also persisted per group.
 - **Wizard flow** in Persian with inline buttons, reply-only validation, and
   owner-only enforcement.
+- **Visible conversation**: the bot never edits a prompt's text to repurpose it
+  and never deletes the owner's replies. Each step disables the previous
+  message's buttons and posts a new message, so the whole exchange stays
+  readable by everyone in the group.
+- **Running summary**: after each payment is recorded, the bot posts a
+  `خلاصه تا الان 📝` block listing every payment so far (payer, amount, people),
+  and re-sends it when the session is finished. Summary names are shown without
+  a leading `@` so nobody gets pinged.
+- **Even or uneven split**: by default a payment is split equally, but the owner
+  can choose **نامساوی (دستی)** to give each person a custom share (e.g. one
+  bill of 100 split 30 / 30 / 40). Shares are entered one-per-line and must sum
+  exactly to the paid amount.
 - **5-minute inactivity timeout** that disables the active menu.
 - **Debt simplification**: debtors make **one payment each**; any residual
   between creditors is settled with extra creditor→creditor transfers. Amounts
@@ -74,7 +86,11 @@ NOTE: This bot was written solely by AI agents.
       named payer, not the session owner, so it's always clear who's being
       recorded.
    3. **Who is sharing it?** — multi-select with 🟢/🔘 toggles.
-   4. **Anyone else paid?** — loop back, or ✅ تموم to finish.
+   4. **How to split?** — ➗ مساوی for an equal split, or ✏️ نامساوی to type
+      each person's share (one number per line, in the listed order; they must
+      add up to the amount).
+   5. A **summary so far** is posted, then **Anyone else paid?** — loop back, or
+      ✅ تموم to finish (which re-posts the final summary).
 
 4. Instead of a one-shot settlement summary, the bot sends a **tagged
    pay-message** to each person who must pay:
@@ -136,10 +152,11 @@ every deploy. For local development, copy `.env.example` to `.env` and fill it i
 .\.venv\Scripts\python.exe -m pytest tests\ -q
 ```
 
-**15 tests** — 8 for the debt-simplification algorithm (both PLAN.md examples,
-plus the one-payment-per-debtor invariant) and 7 for the persistent tab ledger
-(merge, accumulation, real/manual confirmation, balance round-trip, message
-bookkeeping).
+**24 tests** — debt-simplification (both PLAN.md examples, the
+one-payment-per-debtor invariant, and explicit uneven shares), the persistent
+tab ledger (merge, accumulation, uneven invoice, real/manual confirmation,
+balance round-trip, message bookkeeping), and an offline wizard-flow harness
+(even/uneven end-to-end, share validation, no message editing/deletion).
 
 ## Project layout
 
