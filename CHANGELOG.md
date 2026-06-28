@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [1.1.2] — 2026-06-28
+
+### Internal refactoring
+
+- **Wizard state tracking improvements** (`plans/06-uneven-split-refactor.md`):
+  Added `draft_shares` and `draft_split_order` fields to `Session` to track
+  uneven bill splitting state during the wizard flow. The `awaiting_reply`
+  field now documents "u" state prefix for uneven bill interactions. No
+  user-facing changes — this is foundational work for cleaner uneven-split UX.
+
+---
+
 ## [1.1.1] — 2026-06-28
 
 ### Fixes
