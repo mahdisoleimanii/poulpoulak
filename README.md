@@ -121,6 +121,10 @@ NOTE: This bot was written solely by AI agents.
   persisted tab state via a `post_init` hook.
 - The confirmation buttons use HTML `parse_mode` and a `tg://user?id=...`
   anchor for users without a username. All user-supplied text is HTML-escaped.
+- Only the most recent pay-message per debtor (and the latest manual-settle
+  message) is actionable; older/superseded ones are rejected if pressed. Telegram
+  won't always let the bot disable a message older than 48 hours, so the bot
+  guards the action itself rather than relying on the button being removed.
 
 ## Deployment to a VPS
 
@@ -152,11 +156,12 @@ every deploy. For local development, copy `.env.example` to `.env` and fill it i
 .\.venv\Scripts\python.exe -m pytest tests\ -q
 ```
 
-**24 tests** — debt-simplification (both PLAN.md examples, the
+**27 tests** — debt-simplification (both PLAN.md examples, the
 one-payment-per-debtor invariant, and explicit uneven shares), the persistent
 tab ledger (merge, accumulation, uneven invoice, real/manual confirmation,
-balance round-trip, message bookkeeping), and an offline wizard-flow harness
-(even/uneven end-to-end, share validation, no message editing/deletion).
+balance round-trip, message bookkeeping), an offline wizard-flow harness
+(even/uneven end-to-end, share validation, no message editing/deletion), and the
+stale-tab-button guard (superseded real/manual pay-messages are rejected).
 
 ## Project layout
 

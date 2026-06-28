@@ -1,6 +1,21 @@
 # Changelog
 
 
+## [1.1.1] — 2026-06-28
+
+### Fixes
+
+- **Stale debtor-tab buttons are now ignored.** A pay-message from a previous
+  invoice could still be pressed and would confirm the debtor's *current* tab,
+  because its "disable the old buttons" edit hadn't landed (most often
+  Telegram's 48-hour edit limit). The confirm handlers now reject any press that
+  doesn't come from the latest tracked message for that debtor (and the latest
+  manual-settle message): the stale message shows "this message is outdated" and
+  is disabled instead of acting. No amounts were ever miscalculated — this is a
+  UX/robustness fix only.
+
+---
+
 ## [1.1.0] — 2026-06-28
 
 ### Wizard conversation hygiene
