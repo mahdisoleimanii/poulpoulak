@@ -21,6 +21,9 @@ class Payment:
     amount: Decimal
     participant_keys: list[str] = field(default_factory=list)
     participant_labels: list[str] = field(default_factory=list)
+    # Explicit per-participant shares for an uneven split (key -> amount).
+    # None means the amount is split equally among the participants.
+    shares: Optional[dict[str, Decimal]] = None
 
 
 @dataclass
@@ -43,6 +46,11 @@ class Session:
     draft_payer_label: Optional[str] = None
     draft_amount: Optional[Decimal] = None
     draft_participants: set[str] = field(default_factory=set)
+    # Uneven-split draft: explicit shares (key -> amount) and the ordered list of
+    # participant keys as shown to the owner, so the numbered prompt and the
+    # newline-separated reply line up.
+    draft_shares: Optional[dict[str, Decimal]] = None
+    draft_split_order: list[str] = field(default_factory=list)
 
     # The message id of the active menu (so prompts/replies can target it and
     # the timeout can disable it).
@@ -52,7 +60,7 @@ class Session:
     prompt_message_id: Optional[int] = None
 
     # What kind of free-text reply we are currently expecting, if any:
-    # "amount", "manual_payer", "manual_participants", or None.
+    # "amount", "manual_payer", "manual_participants", "uneven_shares", or None.
     awaiting_reply: Optional[str] = None
 
     # Handle to the JobQueue inactivity job, so we can reschedule/cancel it.

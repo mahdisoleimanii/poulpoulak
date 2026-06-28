@@ -70,6 +70,61 @@ ASK_MORE_PAYERS = (
     'اگه آره، انتخابش کن. اگه نه، بزن "✅ تموم"'
 )
 
+# --- split mode (even / uneven) ---------------------------------------------
+
+ASK_SPLIT_MODE = "این خرج چطوری بین این آدما تقسیم بشه؟"
+
+
+def ask_uneven_shares(ordered_labels: list[str], amount: str) -> str:
+    """Prompt for an uneven split.
+
+    Each participant is numbered; the owner replies with one share per line, in
+    the same order. The numbering makes it unambiguous which number is whose.
+    """
+    lines = "\n".join(
+        f"{i}) {label}" for i, label in enumerate(ordered_labels, start=1)
+    )
+    return (
+        "سهم هر کس رو جدا بنویس. هر سهم رو تو یه خطِ جدا، به همین ترتیب:\n\n"
+        f"{lines}\n\n"
+        f"یعنی {len(ordered_labels)} عدد، هر کدوم تو یه خط جدا. "
+        f"جمعشون باید دقیقاً {amount} تومن بشه.\n"
+        "(در پاسخ به همین پیام)"
+    )
+
+
+def uneven_count_mismatch(expected: int) -> str:
+    return (
+        f"باید دقیقاً {expected} تا عدد بنویسی، هر کدوم تو یه خط جدا. "
+        "دوباره بفرست."
+    )
+
+
+def uneven_sum_mismatch(expected: str) -> str:
+    return (
+        f"جمع سهم‌ها باید دقیقاً {expected} تومن بشه. "
+        "دوباره حساب کن و بفرست."
+    )
+
+
+# --- running summary ---------------------------------------------------------
+
+def summary(blocks: list[tuple[str, str, str]]) -> str:
+    """Build the "summary so far" block.
+
+    ``blocks`` is a list of ``(payer_label, amount, participants_text)``. Labels
+    are plain text with no leading ``@`` so the summary does not ping anyone.
+    """
+    out = ["خلاصه تا الان 📝"]
+    for payer, amount, people in blocks:
+        out.append(
+            f"پرداخت‌کننده: {payer}\n"
+            f"مبلغ: {amount} تومن\n"
+            f"افراد:\n{people}"
+        )
+    return "\n\n".join(out)
+
+
 # Manual-entry prompts (None-of-the-above path).
 ASK_MANUAL_PAYER = "اسم کسی که پول داده رو بنویس (در پاسخ به همین پیام)."
 ASK_MANUAL_PARTICIPANTS = (
@@ -133,7 +188,7 @@ DOUBLE_CONFIRM_SUFFIX = "\n\n⚠️ برای اطمینان، یه بار دیگ
 
 def debtor_paid(src_tag: str, dst_tag: str, amount: str) -> str:
     """Settled state shown on the debtor's message after final confirmation."""
-    return f"✅ {src_tag} مبلغ {amount} تومن رو به {dst_tag} پرداخت کرد. ممنون!"
+    return f"✅ {src_tag}\nمبلغ {amount} تومن رو به \n{dst_tag} پرداخت کرد.\n ممنون!"
 
 
 def debtor_paid_generic(src_tag: str) -> str:
@@ -172,6 +227,9 @@ BTN_CHANGE_PAYER = "تغییر پرداخت کننده"
 BTN_CHANGE_AMOUNT = "تغییر مبلغ"
 BTN_DONE = "✅ تموم"
 BTN_CONFIRM_PARTICIPANTS = "✅ ادامه"
+BTN_SPLIT_EVEN = "➗ مساوی"
+BTN_SPLIT_UNEVEN = "✏️ نامساوی (دستی)"
+BTN_CHANGE_PARTICIPANTS = "تغییر افراد"
 SELECTED = "🟢"
 UNSELECTED = "🔘"
 

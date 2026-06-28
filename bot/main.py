@@ -23,6 +23,7 @@ from .handlers.dong import (
     on_more_callback,
     on_participant_callback,
     on_payer_callback,
+    on_split_callback,
 )
 from .handlers.membership import on_my_chat_member
 from .handlers.reminders import reschedule_all
@@ -118,6 +119,10 @@ async def _callback_dispatcher(
         or data in {"pmanual", "pok", "pback", "ppcancel"}
     ):
         await on_participant_callback(update, context)
+        return
+    # Step 11.5 (split mode: even / uneven).
+    if data in {"sev", "sun", "sback", "scancel"}:
+        await on_split_callback(update, context)
         return
     # Step 12 (more payers?).
     if data.startswith("more|") or data in {"done", "mcancel", "moreno"}:

@@ -36,6 +36,15 @@ def pay(payer: str, amount: str, participants: list[str]) -> Payment:
     return Payment(payer=payer, amount=D(amount), participants=tuple(participants))
 
 
+def pay_uneven(payer: str, amount: str, shares: list[tuple[str, str]]) -> Payment:
+    return Payment(
+        payer=payer,
+        amount=D(amount),
+        participants=tuple(k for k, _ in shares),
+        shares=tuple((k, D(v)) for k, v in shares),
+    )
+
+
 def _debtor_pays_once(obls):
     """Every genuine debtor (negative net balance) is a src at most once."""
     bal = ledger.balances_from_obligations(obls)
@@ -62,6 +71,25 @@ def test_merge_single_invoice():
     assert ledger.load_obligations(CHAT) == obls
     # Labels carried.
     assert all(o.src_label and o.dst_label for o in obls)
+
+
+# --- uneven invoice ---------------------------------------------------------
+
+def test_merge_uneven_invoice():
+    label_map = {"u1": "Ali", "u2": "Sara", "u3": "Reza"}
+    # Ali paid 100 for the three of them with shares 30 / 30 / 40.
+    obls = ledger.merge_invoice(
+        CHAT,
+        [pay_uneven("u1", "100", [("u1", "30"), ("u2", "30"), ("u3", "40")])],
+        label_map,
+    )
+    # Sara owes 30, Reza owes 40 — each to Ali, each exactly once.
+    assert {(o.src, o.dst, o.amount) for o in obls} == {
+        ("u2", "u1", D("30")),
+        ("u3", "u1", D("40")),
+    }
+    _debtor_pays_once(obls)
+    assert ledger.load_obligations(CHAT) == obls
 
 
 # --- accumulation across invoices ------------------------------------------

@@ -150,3 +150,64 @@ def test_no_transactions_when_balanced():
 def test_returns_transaction_objects():
     txns = settle([Payment("A", D("10"), ("A", "B"))])
     assert all(isinstance(t, Transaction) for t in txns)
+
+
+# --- uneven splitting (explicit shares) -------------------------------------
+
+def test_uneven_shares_balances():
+    # A paid 100 for A, B, C with shares 30 / 30 / 40 (in that order).
+    payments = [
+        Payment(
+            "A", D("100"), ("A", "B", "C"),
+            shares=(("A", D("30")), ("B", D("30")), ("C", D("40"))),
+        )
+    ]
+    balances = compute_balances(payments)
+    # A paid 100, owes own share 30 -> +70. B owes 30, C owes 40.
+    assert balances["A"] == D("70")
+    assert balances["B"] == D("-30")
+    assert balances["C"] == D("-40")
+
+
+def test_uneven_shares_each_debtor_pays_once():
+    payments = [
+        Payment(
+            "A", D("100"), ("A", "B", "C"),
+            shares=(("A", D("30")), ("B", D("30")), ("C", D("40"))),
+        )
+    ]
+    balances = compute_balances(payments)
+    txns = settle(payments)
+    assert_debtor_single_payment(balances, txns)
+    assert_conserved(balances, txns)
+    # B pays A 30, C pays A 40.
+    assert {(t.src, t.dst, t.amount) for t in txns} == {
+        ("B", "A", D("30")),
+        ("C", "A", D("40")),
+    }
+
+
+def test_uneven_shares_excludes_unlisted_payer():
+    # Payer not among the shares: paid 90 for B and C only, 40/50.
+    payments = [
+        Payment(
+            "A", D("90"), ("B", "C"),
+            shares=(("B", D("40")), ("C", D("50"))),
+        )
+    ]
+    balances = compute_balances(payments)
+    assert balances["A"] == D("90")
+    assert balances["B"] == D("-40")
+    assert balances["C"] == D("-50")
+
+
+def test_shares_none_matches_equal_split():
+    # shares=None must behave exactly like the equal-split path.
+    even = compute_balances([Payment("A", D("90"), ("A", "B", "C"))])
+    explicit = compute_balances([
+        Payment(
+            "A", D("90"), ("A", "B", "C"),
+            shares=(("A", D("30")), ("B", D("30")), ("C", D("30"))),
+        )
+    ])
+    assert even == explicit

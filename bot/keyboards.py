@@ -14,6 +14,10 @@ Callback-data scheme (kept short; Telegram caps callback_data at 64 bytes):
   more|<member_key>     more-payers: pick another payer
   done                  more-payers: finish -> settle
   mcancel               more-payers: cancel
+  sev                   split: divide equally
+  sun                   split: enter uneven shares
+  sback                 split: go back to participants
+  scancel               split: cancel
 
 Debtor-tab buttons (post-settlement, see bot/ledger.py):
   paid1|<member_key>    debtor: "I paid" (first press -> ask to re-confirm)
@@ -109,6 +113,32 @@ def more_payers_keyboard(members: list[Member]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(messages.BTN_CANCEL, callback_data="mcancel")]
     )
     return InlineKeyboardMarkup(rows)
+
+
+def split_keyboard() -> InlineKeyboardMarkup:
+    """New step: choose an equal or an uneven split for the current payment."""
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(messages.BTN_SPLIT_EVEN, callback_data="sev")],
+            [InlineKeyboardButton(messages.BTN_SPLIT_UNEVEN, callback_data="sun")],
+            [InlineKeyboardButton(
+                messages.BTN_CHANGE_PARTICIPANTS, callback_data="sback"
+            )],
+            [InlineKeyboardButton(messages.BTN_CANCEL, callback_data="scancel")],
+        ]
+    )
+
+
+def uneven_keyboard() -> InlineKeyboardMarkup:
+    """While the owner is typing the per-person shares: back / cancel only."""
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(
+                messages.BTN_CHANGE_PARTICIPANTS, callback_data="sback"
+            )],
+            [InlineKeyboardButton(messages.BTN_CANCEL, callback_data="scancel")],
+        ]
+    )
 
 
 # --- debtor-tab keyboards ----------------------------------------------------

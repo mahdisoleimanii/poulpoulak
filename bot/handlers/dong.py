@@ -18,12 +18,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
-from .. import access, config, ledger, messages, roster as roster_mod, state
+from .. import access, config, ledger, messages, roster as roster_mod, settle, state
 from ..keyboards import (
     amount_keyboard,
     more_payers_keyboard,
     participants_keyboard,
     payer_keyboard,
+    split_keyboard,
+    uneven_keyboard,
 )
 from ..roster import find, members, mention_user
 from ..settle import Payment as SettlePayment
@@ -45,6 +47,52 @@ def _is_group(update: Update) -> bool:
 
 def _owner_only(session: state.Session, user_id: int | None) -> bool:
     return user_id is not None and session.owner_id == user_id
+
+
+async def _disable_markup(context, chat_id: int, message_id: int | None) -> None:
+    """Strip the inline buttons off a message without touching its text.
+
+    This is the "good practice" the developer asked for: instead of editing a
+    prompt's text to repurpose it, we just disable its buttons and send a fresh
+    message for the next step. No-op on failure (message gone / no markup).
+    """
+    if message_id is None:
+        return
+    try:
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id, message_id=message_id, reply_markup=None
+        )
+    except Exception:
+        pass
+
+
+def _fmt_amount(value) -> str:
+    """Render a Decimal amount without a needless ``.00`` tail."""
+    d = Decimal(str(value))
+    if d == d.to_integral_value():
+        return str(int(d))
+    return str(settle.quantize_down(d))
+
+
+def _strip_at(label: str) -> str:
+    """Drop a leading ``@`` so summary labels do not ping anyone."""
+    return label[1:] if label.startswith("@") else label
+
+
+def _summary_blocks(session: state.Session) -> list[tuple[str, str, str]]:
+    """Build the (payer, amount, participants) blocks for ``messages.summary``."""
+    blocks: list[tuple[str, str, str]] = []
+    for p in session.payments:
+        payer = _strip_at(p.payer_label)
+        if p.shares:
+            people = " - ".join(
+                f"{_strip_at(label)} ({_fmt_amount(p.shares[key])})"
+                for key, label in zip(p.participant_keys, p.participant_labels)
+            )
+        else:
+            people = " - ".join(_strip_at(label) for label in p.participant_labels)
+        blocks.append((payer, _fmt_amount(p.amount), people))
+    return blocks
 
 
 def _schedule_timeout(
@@ -196,6 +244,8 @@ async def on_group_message(
         await on_amount_message(update, context)
     elif expected == "manual_participants":
         await on_manual_participants_message(update, context)
+    elif expected == "uneven_shares":
+        await on_uneven_shares_message(update, context)
 
 
 # ---------- entry: the "دنگ" keyword ----------------------------------------
@@ -275,6 +325,7 @@ async def on_payer_callback(
         await _cancel(context, session)
         return
     if data == "pno":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
         await _ask_manual_payer(context, session)
         return
     if data.startswith("pay|"):
@@ -284,7 +335,8 @@ async def on_payer_callback(
             return
         session.draft_payer_key = member.key
         session.draft_payer_label = member.label
-        await _show_amount_prompt(context, session, query=query)
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        await _show_amount_prompt(context, session)
         return
 
 
@@ -322,17 +374,15 @@ async def on_manual_payer_message(
     session.draft_payer_key = member.key
     session.draft_payer_label = member.label
     session.awaiting_reply = None
-    try:
-        await message.delete()
-    except Exception:
-        pass
-    await _show_amount_prompt(context, session, query=None)
+    await _disable_markup(context, session.chat_id, session.menu_message_id)
+    await _show_amount_prompt(context, session, reply_to=message.message_id)
 
 
 # ---------- step: amount ----------------------------------------------------
 
-async def _show_amount_prompt(context, session, query=None) -> None:
+async def _show_amount_prompt(context, session, reply_to=None) -> None:
     # Show the payer's name, not the session owner — so it is clear who paid.
+    # Always send a NEW message (never edit a previous prompt's text).
     payer_tag = session.draft_payer_label or "?"
     if session.draft_payer_key and session.draft_payer_key.startswith("u"):
         member = find(session.chat_id, session.draft_payer_key)
@@ -341,17 +391,12 @@ async def _show_amount_prompt(context, session, query=None) -> None:
                 member.user_id, member.username, member.first_name
             )
     text = messages.ask_amount(payer_tag)
-    sent = None
-    if query is not None and query.message is not None:
-        try:
-            await query.edit_message_text(text, reply_markup=amount_keyboard())
-            sent = query.message
-        except Exception:
-            pass
-    if sent is None:
-        sent = await context.bot.send_message(
-            session.chat_id, text, reply_markup=amount_keyboard()
-        )
+    sent = await context.bot.send_message(
+        session.chat_id,
+        text,
+        reply_markup=amount_keyboard(),
+        reply_to_message_id=reply_to,
+    )
     session.menu_message_id = sent.message_id
     session.prompt_message_id = sent.message_id
     session.awaiting_reply = "amount"
@@ -373,6 +418,7 @@ async def on_amount_callback(
         await _cancel(context, session)
         return
     if data == "achange":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
         await _show_payer_prompt(context, session)
         return
 
@@ -411,21 +457,19 @@ async def on_amount_message(
 
     session.draft_amount = amount
     session.awaiting_reply = None
-    try:
-        await message.delete()
-    except Exception:
-        pass
-    await _show_participants_prompt(context, session)
+    await _disable_markup(context, session.chat_id, session.menu_message_id)
+    await _show_participants_prompt(context, session, reply_to=message.message_id)
 
 
 # ---------- step: pick participants -----------------------------------------
 
-async def _show_participants_prompt(context, session) -> None:
+async def _show_participants_prompt(context, session, reply_to=None) -> None:
     chat_members = members(session.chat_id)
     sent = await context.bot.send_message(
         session.chat_id,
         messages.ASK_PARTICIPANTS,
         reply_markup=participants_keyboard(chat_members, session.draft_participants),
+        reply_to_message_id=reply_to,
     )
     session.menu_message_id = sent.message_id
     session.prompt_message_id = sent.message_id
@@ -449,9 +493,11 @@ async def on_participant_callback(
         await _cancel(context, session)
         return
     if data == "pback":
-        await _show_amount_prompt(context, session, query=query)
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        await _show_amount_prompt(context, session)
         return
     if data == "pmanual":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
         await _ask_manual_participants(context, session)
         return
     if data.startswith("ptog|"):
@@ -478,7 +524,8 @@ async def on_participant_callback(
             except Exception:
                 pass
             return
-        await _commit_and_ask_more(query, context, session)
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        await _show_split_prompt(context, session)
         return
 
 
@@ -511,10 +558,6 @@ async def on_manual_participants_message(
     for n in names:
         roster_mod.add_manual_name(session.chat_id, n)
         session.draft_participants.add(f"m{n}")
-    try:
-        await message.delete()
-    except Exception:
-        pass
     chat_members = members(session.chat_id)
     try:
         await context.bot.edit_message_reply_markup(
@@ -529,46 +572,177 @@ async def on_manual_participants_message(
     _schedule_timeout(context, session)
 
 
-async def _commit_and_ask_more(query, context, session) -> None:
+# ---------- step: choose split (even / uneven) ------------------------------
+
+async def _show_split_prompt(context, session) -> None:
+    """After participants are picked, ask how to split this payment."""
+    sent = await context.bot.send_message(
+        session.chat_id, messages.ASK_SPLIT_MODE, reply_markup=split_keyboard()
+    )
+    session.menu_message_id = sent.message_id
+    session.prompt_message_id = sent.message_id
+    session.awaiting_reply = None
+    _schedule_timeout(context, session)
+
+
+def _ordered_participants(session) -> list:
+    """Selected participants in stable roster order (for prompts + commit)."""
+    return [m for m in members(session.chat_id) if m.key in session.draft_participants]
+
+
+async def on_split_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    session = await _guard_callback(update, context)
+    if session is None:
+        return
+    await query.answer()
+    data = query.data or ""
+
+    if data == "scancel":
+        await _cancel(context, session)
+        return
+    if data == "sback":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        session.draft_split_order = []
+        session.draft_shares = None
+        await _show_participants_prompt(context, session)
+        return
+    if data == "sev":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        _commit_payment(session, shares=None)
+        await _show_summary_and_more(context, session)
+        return
+    if data == "sun":
+        ordered = _ordered_participants(session)
+        if not ordered:
+            return
+        session.draft_split_order = [m.key for m in ordered]
+        labels = [m.label for m in ordered]
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        sent = await context.bot.send_message(
+            session.chat_id,
+            messages.ask_uneven_shares(labels, _fmt_amount(session.draft_amount)),
+            reply_markup=uneven_keyboard(),
+        )
+        session.menu_message_id = sent.message_id
+        session.prompt_message_id = sent.message_id
+        session.awaiting_reply = "uneven_shares"
+        _schedule_timeout(context, session)
+        return
+
+
+async def on_uneven_shares_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    session = await _guard_message(update, context)
+    if session is None or message is None:
+        return
+    if session.awaiting_reply != "uneven_shares":
+        return
+
+    order = session.draft_split_order
+    tokens = [t.strip() for t in (message.text or "").split("\n") if t.strip()]
+    if len(tokens) != len(order):
+        try:
+            await message.reply_text(messages.uneven_count_mismatch(len(order)))
+        except Exception:
+            pass
+        return
+
+    shares_list: list[Decimal] = []
+    for tok in tokens:
+        raw = tok.replace(",", ".")
+        if not DECIMAL_RE.match(raw):
+            try:
+                await message.reply_text(messages.INVALID_AMOUNT)
+            except Exception:
+                pass
+            return
+        try:
+            val = Decimal(raw)
+        except InvalidOperation:
+            try:
+                await message.reply_text(messages.INVALID_AMOUNT)
+            except Exception:
+                pass
+            return
+        if val < 0:
+            try:
+                await message.reply_text(messages.INVALID_AMOUNT)
+            except Exception:
+                pass
+            return
+        shares_list.append(settle.quantize_down(val))
+
+    total = sum(shares_list, Decimal("0"))
+    expected = settle.quantize_down(session.draft_amount or Decimal("0"))
+    if total != expected:
+        try:
+            await message.reply_text(
+                messages.uneven_sum_mismatch(_fmt_amount(expected))
+            )
+        except Exception:
+            pass
+        return
+
+    session.draft_shares = {key: val for key, val in zip(order, shares_list)}
+    _commit_payment(session, shares=session.draft_shares)
+    await _show_summary_and_more(context, session)
+
+
+# ---------- commit + "more payers?" -----------------------------------------
+
+def _commit_payment(session, shares) -> None:
+    """Record the drafted payment and reset the draft. Pure state mutation."""
+    ordered = _ordered_participants(session)
+    participant_keys = [m.key for m in ordered]
+    participant_labels = [m.label for m in ordered]
     payer_label = session.draft_payer_label or "?"
-    participants: list[str] = []
-    for key in session.draft_participants:
-        m = find(session.chat_id, key)
-        if m is not None:
-            participants.append(m.label)
     session.payments.append(
         state.Payment(
             payer_key=session.draft_payer_key or "?",
             payer_label=payer_label,
             amount=session.draft_amount or Decimal("0"),
-            participant_keys=list(session.draft_participants),
-            participant_labels=participants,
+            participant_keys=participant_keys,
+            participant_labels=participant_labels,
+            shares=shares,
         )
     )
     log.info(
-        "chat %s: recorded payment %s paid %s for %d people (total %d so far)",
+        "chat %s: recorded payment %s paid %s for %d people, %s split "
+        "(total %d so far)",
         session.chat_id, payer_label, session.draft_amount,
-        len(participants), len(session.payments),
+        len(participant_keys), "uneven" if shares else "even",
+        len(session.payments),
     )
     session.draft_payer_key = None
     session.draft_payer_label = None
     session.draft_amount = None
     session.draft_participants = set()
+    session.draft_shares = None
+    session.draft_split_order = []
     session.awaiting_reply = None
 
+
+async def _show_summary_and_more(context, session) -> None:
+    """Send the running summary plus the 'another payer?' menu as one message."""
     chat_members = members(session.chat_id)
-    try:
-        await query.edit_message_text(
-            messages.ASK_MORE_PAYERS,
-            reply_markup=more_payers_keyboard(chat_members),
-        )
-    except Exception:
-        sent = await context.bot.send_message(
-            session.chat_id,
-            messages.ASK_MORE_PAYERS,
-            reply_markup=more_payers_keyboard(chat_members),
-        )
-        session.menu_message_id = sent.message_id
+    text = (
+        messages.summary(_summary_blocks(session))
+        + "\n\n"
+        + messages.ASK_MORE_PAYERS
+    )
+    sent = await context.bot.send_message(
+        session.chat_id, text, reply_markup=more_payers_keyboard(chat_members)
+    )
+    session.menu_message_id = sent.message_id
+    session.prompt_message_id = sent.message_id
+    session.awaiting_reply = None
     _schedule_timeout(context, session)
 
 
@@ -590,9 +764,19 @@ async def on_more_callback(
         await _cancel(context, session)
         return
     if data == "done":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        # Re-send the summary as its own message before settling (req: don't
+        # repurpose the menu message).
+        try:
+            await context.bot.send_message(
+                session.chat_id, messages.summary(_summary_blocks(session))
+            )
+        except Exception:
+            pass
         await _settle(context, session)
         return
     if data == "moreno":
+        await _disable_markup(context, session.chat_id, query.message.message_id)
         await _ask_manual_payer(context, session)
         return
     if data.startswith("more|"):
@@ -602,7 +786,8 @@ async def on_more_callback(
             return
         session.draft_payer_key = member.key
         session.draft_payer_label = member.label
-        await _show_amount_prompt(context, session, query=query)
+        await _disable_markup(context, session.chat_id, query.message.message_id)
+        await _show_amount_prompt(context, session)
         return
 
 
@@ -626,6 +811,11 @@ async def _settle(context, session) -> None:
             payer=p.payer_key,
             amount=p.amount,
             participants=tuple(p.participant_keys),
+            shares=(
+                tuple((k, p.shares[k]) for k in p.participant_keys)
+                if p.shares
+                else None
+            ),
         )
         for p in session.payments
         if p.participant_keys

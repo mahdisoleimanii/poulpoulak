@@ -28,11 +28,19 @@ def quantize_down(value: Decimal) -> Decimal:
 
 @dataclass(frozen=True)
 class Payment:
-    """A payment for settlement: ``payer`` paid ``amount`` for ``participants``."""
+    """A payment for settlement: ``payer`` paid ``amount`` for ``participants``.
+
+    By default the amount is split **equally** among ``participants``. For an
+    uneven split, ``shares`` carries an explicit ``(participant, amount)`` per
+    person (a tuple of pairs, kept hashable so the dataclass stays frozen). When
+    ``shares`` is set it overrides the equal split; the per-person amounts are
+    expected to sum to ``amount`` (the caller validates this).
+    """
 
     payer: str
     amount: Decimal
     participants: tuple[str, ...]
+    shares: tuple[tuple[str, Decimal], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -57,10 +65,16 @@ def compute_balances(payments: Iterable[Payment]) -> dict[str, Decimal]:
         n = len(pmt.participants)
         if n == 0:
             continue
-        share = quantize_down(pmt.amount / Decimal(n))
         paid[pmt.payer] += pmt.amount
-        for person in pmt.participants:
-            owed[person] += share
+        if pmt.shares:
+            # Uneven split: each person owes their explicitly-given share.
+            for person, person_share in pmt.shares:
+                owed[person] += quantize_down(person_share)
+        else:
+            # Even split: amount divided equally, rounded DOWN per person.
+            share = quantize_down(pmt.amount / Decimal(n))
+            for person in pmt.participants:
+                owed[person] += share
 
     people = set(paid) | set(owed)
     return {p: quantize_down(paid[p] - owed[p]) for p in people}
